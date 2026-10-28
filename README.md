@@ -1,41 +1,122 @@
-# Monitor USD/MXN
+# USD/MXN Monitor
 
-Aplicación para la **Waveshare ESP32-C6-Touch-LCD-1.83**, pantalla ST7789 de 240 × 284, táctil CST816D, IMU QMI8658 y gestor de energía AXP2101.
+A desktop **USD → MXN** exchange rate monitor for the **Waveshare ESP32-C6-Touch-LCD-1.83**, with an interface inspired by the macOS stock widget. It displays the value of one US dollar in Mexican pesos, a five-session chart, and battery status. It connects directly to Wi-Fi without a separate server or companion app.
 
-## Uso
+**Git release: `v0.2.0`** · Arduino / C++ · Automatic rotation in four orientations
 
-- El precio grande indica cuántos MXN vale **1 USD**.
-- La gráfica muestra las últimas cinco **sesiones de mercado**, con muestras horarias. Omite los fines de semana sin negociación. El cambio en pesos y porcentaje se calcula contra la primera muestra de la gráfica; la línea punteada marca ese inicio.
-- La consulta es automática cada cinco minutos. Una pulsación breve de **PWR** o una sacudida fuerte solicita una actualización y despierta la pantalla. Se muestran `Actualizando...`, `Actualizado` o `Sin cambios` como confirmación. Hay un intervalo mínimo de 15 segundos entre consultas para evitar ráfagas accidentales.
-- Tocar la pantalla **solo la despierta cuando está apagada**. No consulta datos ni cambia el modo; si ya está encendida o atenuada, no hace nada.
-- La pantalla se adapta automáticamente a las cuatro orientaciones: vertical (240 × 284), horizontal (284 × 240) y sus posiciones invertidas. Conserva el precio grande y adapta la anchura/altura de la gráfica. El sensor exige una posición estable durante unos 700 ms; sobre una mesa plana, en diagonal o durante una sacudida conserva la orientación anterior. Girar no consulta datos ni despierta por sí solo la pantalla apagada.
-- Una **doble pulsación rápida de PWR** (hasta 450 ms entre eventos) recorre `ON → AUTO → DIM → ON`. `ON` permanece encendida al brillo normal; `AUTO` atenúa a los 30 segundos y apaga a los 60 segundos sin interacción; `DIM` permanece encendida al brillo mínimo (PWM 1 de 255). En DIM, las consultas y pulsaciones simples mantienen ese brillo mínimo. La pulsación simple espera esa ventana para distinguirla de una doble; la doble no actualiza datos. Se recuerda el modo tras reiniciar, incluso DIM. El apagado de pantalla no es suspensión profunda: el dispositivo sigue consultando y detectando toque/movimiento.
-- La barra superior mide el porcentaje que reporta el AXP2101. Mientras hay carga activa y la barra está visible, es azul con un brillo que recorre de izquierda a derecha la parte llena cada 2.4 segundos, también con batería baja. Cuando está visible sin carga activa, es verde (o roja al 20 % o menos). El estado se comprueba cada segundo. Estar conectado por USB con la batería llena no implica carga activa. Un patrón gris indica que no hay una lectura válida; no se inventa un porcentaje.
-- Si está conectado por USB y marca **100 %**, la barra se oculta completamente, incluido el fondo gris. Vuelve a aparecer al desconectarlo o bajar del 100 %. La conexión USB se lee por separado del estado de carga, para reconocer también la batería llena que ya no está cargándose.
-- El texto junto a `5 DIAS` es la fecha/hora de la cotización, en horario de Ciudad de México. `Yahoo / HH:MM` indica la última consulta exitosa. Consultar no implica que el proveedor publique una nueva cotización en ese momento.
-- Si falla la conexión, se conserva la última información y se muestra el error en ámbar. Se reintenta después de un minuto; si Yahoo devuelve HTTP 429, después de cinco minutos. Se recupera la última cotización guardada al reiniciar.
+## Screenshot
 
-## Datos y batería
+![USD/MXN monitor in landscape: five-session chart, exchange rate, and price change](docs/images/usd-mxn-landscape.png)
 
-Se usa el endpoint público de gráficos de Yahoo Finance para `MXN=X` con `range=5d&interval=60m`. No necesita cuenta ni clave, pero no es una API con garantía de continuidad: puede cambiar o limitar solicitudes. La cotización de mercado puede diferir de Google (que identifica a Morningstar como proveedor de divisas). No se usa una tasa bancaria de compra/venta ni se reemplaza silenciosamente por una tasa diaria.
+Actual capture from the renderer running on the board with version 0.2.0, retrieved over USB at **284 × 240 pixels**. The price reflects the time of capture. The battery bar is hidden because the device was connected to USB with a full battery.
 
-HTTPS valida la cadena del servidor mediante DigiCert Global Root G2. El reloj PCF85063 conserva la hora entre arranques; se inicializa con la hora de la computadora al compilar, y se ajusta con la cabecera `Date` de la respuesta HTTPS autenticada. También se solicita NTP en segundo plano. Esto permite funcionar en redes que bloquean NTP sin desactivar la validación TLS. Si se pierde por completo la alimentación del RTC y el firmware lleva mucho tiempo sin actualizarse, puede ser necesario recompilar/cargar para restablecer la hora. Se limita el tamaño de respuesta y se validan moneda, símbolo, valores y fechas antes de actualizar la pantalla.
+## Features
 
-Waveshare muestra en el contenido del paquete una batería **602525, 3.7 V, 400 mAh**. El porcentaje se lee con `getBatteryPercent()` del AXP2101 y puede requerir un ciclo de carga/descarga para calibrarse. La aplicación conserva la configuración existente de voltajes y corriente de carga, sin reprogramarla a partir de una capacidad supuesta.
+- Yahoo Finance market quotes, refreshed automatically every five minutes.
+- Chart of the last five trading sessions with hourly samples, absolute change in pesos, and percentage change.
+- Responsive layout: **240 × 284** in portrait and **284 × 240** in landscape, including both inverted orientations.
+- Manual refresh using PWR or a strong shake, with on-screen feedback.
+- Three brightness modes: `ON`, `AUTO`, and `DIM`, preserved across restarts.
+- Battery bar with a blue charging animation and a red low-battery indicator.
+- Last known quote retained during connection failures and restored after restart.
+- HTTPS certificate validation and timekeeping backed by the board's RTC.
 
-Fuentes:
+## Hardware
 
-- [Hardware Waveshare](https://docs.waveshare.com/ESP32-C6-Touch-LCD-1.83)
-- [Ejemplos oficiales](https://github.com/waveshareteam/ESP32-C6-Touch-LCD-1.83)
-- [Paquete y batería](https://www.waveshare.com/esp32-c6-touch-lcd-1.83.htm), [etiqueta de batería](https://www.waveshare.com/img/devkit/general/battery-3.7V-400mAh.jpg)
-- [USD/MXN en Yahoo](https://finance.yahoo.com/quote/MXN%3DX/)
-- [Proveedor de datos de Google](https://www.google.com/googlefinance/disclaimer/)
+Designed and tested on the **Waveshare ESP32-C6-Touch-LCD-1.83**. No external sensor wiring is required.
 
-## Compilar y cargar
+| Component | Specification and use |
+| --- | --- |
+| Microcontroller | ESP32-C6, 32-bit RISC-V, up to 160 MHz |
+| Memory | 512 KB SRAM and 16 MB flash on this board |
+| Display | 1.83-inch touch LCD, 240 × 284, ST7789P controller over SPI; RGB565 rendering |
+| Touch | CST816D over I²C; wakes the display |
+| Motion | QMI8658 six-axis IMU; accelerometer used for rotation and shake detection |
+| Power management | AXP2101; battery percentage, USB connection, and charging status |
+| Clock | Battery-backed PCF85063; maintains time for HTTPS connections |
+| Connectivity used | 2.4 GHz Wi-Fi |
+| USB | USB-C for power, flashing, diagnostics, and screenshots |
+| Controls | PWR and BOOT buttons; the app uses PWR |
+| Battery in the tested unit | 602525 LiPo, 3.7 V, 400 mAh, included in the kit used for this project |
 
-Las herramientas y bibliotecas se guardan dentro de `.arduino/`, sin modificar la instalación global.
+The board also includes audio hardware and a microSD slot, which this app does not use. Reference specifications: [official Waveshare documentation](https://docs.waveshare.com/ESP32-C6-Touch-LCD-1.83) and [manufacturer examples](https://github.com/waveshareteam/ESP32-C6-Touch-LCD-1.83).
 
-Versiones fijadas: ESP32 Arduino 3.3.4, GFX Library for Arduino 1.6.3, SensorLib 0.3.3, XPowersLib 0.3.0, ArduinoJson 7.4.2. Tipografía Inter, licencia OFL en `assets/fonts/OFL.txt`.
+Battery percentage is read from the AXP2101 using `getBatteryPercent()`. Calibration may require a charge/discharge cycle. The firmware preserves the existing charging current and voltage settings.
+
+### Internal connections used
+
+| Signal | GPIO |
+| --- | --- |
+| LCD SCK / MOSI | 1 / 2 |
+| LCD DC / CS / RESET | 3 / 5 / 4 |
+| Backlight | 6 |
+| I²C SDA / SCL | 7 / 8 |
+| Touch interrupt | 11 |
+
+PWR is read through the AXP2101 power management chip rather than directly through a GPIO.
+
+## Controls and display modes
+
+| Action | Result |
+| --- | --- |
+| Single short PWR press | Requests a quote and wakes the display |
+| Two quick PWR presses | Cycles through `ON → AUTO → DIM → ON` |
+| Strong shake | Requests a quote and wakes the display |
+| Tap while the display is off | Wakes the display without fetching data |
+| Tap while the display is on or dimmed | No action |
+| Rotate the device | Adjusts orientation without fetching data or waking the display |
+
+The double-press window is **450 ms**; a single press waits for that window before taking effect. Manual requests have a minimum interval of **15 seconds**. The current on-device interface uses Spanish status messages: `Actualizando...` (Updating...), `Actualizado` (Updated), and `Sin cambios` (No changes).
+
+| Mode | Behavior |
+| --- | --- |
+| `ON` | Display stays on at normal brightness |
+| `AUTO` | Dims after 30 seconds of inactivity and turns off after 60 seconds |
+| `DIM` | Display stays on at minimum brightness, PWM 1 out of 255 |
+
+In `DIM`, refreshing or pressing PWR once preserves minimum brightness. Turning off the display in `AUTO` does not put the microcontroller to sleep: data fetching, touch sensing, and motion detection remain active.
+
+Rotation requires a stable position for approximately **700 ms**, in addition to sensor filtering. When lying flat on a table, held diagonally, or being shaken, the device keeps its previous orientation.
+
+### Battery indicator
+
+The length of the top bar represents the remaining battery percentage:
+
+| State | Appearance |
+| --- | --- |
+| Actively charging | Blue, with a highlight sweeping across the filled portion from left to right every 2.4 seconds |
+| Not charging, above 20% | Green |
+| Not charging, 20% or below | Red |
+| USB connected, battery at 100% | Bar and background completely hidden |
+| No valid reading | Gray pattern |
+
+Status is checked every second. USB connection is detected separately from active charging: a full battery can remain connected without charging.
+
+## Quotes and connectivity
+
+The large price shows how many Mexican pesos **1 USD** is worth. The chart covers five **trading sessions**, omitting periods without trading. The change is measured against the first chart sample, marked by the dotted line; it does not necessarily represent the daily change.
+
+- The date beside `5 DIAS` (5 DAYS) is the quote timestamp in Mexico City time.
+- `Yahoo / HH:MM` shows the last successful fetch; fetching does not guarantee that the provider has published a new price.
+- On failure, previous data remains visible and an error appears in amber. The app retries after one minute, or after five minutes if the server returns HTTP 429.
+
+The app uses the public [Yahoo Finance USD/MXN](https://finance.yahoo.com/quote/MXN%3DX/) chart endpoint:
+
+```text
+https://query1.finance.yahoo.com/v8/finance/chart/MXN=X?range=5d&interval=60m
+```
+
+It currently requires no account or API key. Availability is not guaranteed, and the endpoint may change or rate-limit requests. Quotes may differ slightly from Google and do not represent a bank's buy or sell rate. The app does not silently substitute a daily exchange rate.
+
+HTTPS certificates are validated using DigiCert Global Root G2. The PCF85063 preserves time, initially seeded from the build computer's clock and then adjusted using the `Date` header from an authenticated HTTPS response. NTP is also requested in the background. If the RTC loses all power and the firmware is old, rebuilding and flashing may be necessary to restore the time. Response sizes are bounded, and the symbol, currency, values, and timestamps are validated before updating the display.
+
+## Build and flash
+
+Requirements: Arduino CLI, Python 3, a USB-C data cable, and a 2.4 GHz Wi-Fi network. Tests and desktop previews also require a C++17 compiler.
+
+Before installing dependencies, update the absolute paths in `arduino-cli.yaml` to match your project directory. Tools and libraries are stored under `.arduino/`, leaving the global installation unchanged.
+
+Pinned versions: ESP32 Arduino 3.3.4, GFX Library for Arduino 1.6.3, SensorLib 0.3.3, XPowersLib 0.3.0, and ArduinoJson 7.4.2. The Inter font's OFL license is included in `assets/fonts/OFL.txt`.
 
 ```sh
 arduino-cli --config-file arduino-cli.yaml core update-index
@@ -43,29 +124,81 @@ arduino-cli --config-file arduino-cli.yaml core install esp32:esp32@3.3.4
 arduino-cli --config-file arduino-cli.yaml lib install 'GFX Library for Arduino@1.6.3' 'SensorLib@0.3.3' 'XPowersLib@0.3.0' 'ArduinoJson@7.4.2'
 ```
 
-En una copia nueva del repositorio, copiar `wifi.example.json` a `wifi.local.json` y completar `ssid` y `password`. Se requiere Wi-Fi de **2.4 GHz**. El archivo local, el encabezado generado `secrets.h` y los binarios quedan excluidos de Git. El firmware contiene las credenciales, por lo que tampoco deben compartirse sus binarios.
+In a fresh clone, copy `wifi.example.json` to `wifi.local.json` and fill in `ssid` and `password`. **2.4 GHz** Wi-Fi is required. The local file, generated `secrets.h` header, and binaries are excluded from Git. Firmware binaries contain credentials and should not be shared.
 
 ```sh
+cp wifi.example.json wifi.local.json
+# Edit wifi.local.json with your credentials before building.
 sh tools/build.sh
 arduino-cli --config-file arduino-cli.yaml board list
 sh tools/upload.sh /dev/cu.usbmodem101
 ```
 
-El puerto puede cambiar al reconectar. `upload.sh` vuelve a compilar y solo carga si la compilación tuvo éxito. El archivo `arduino-cli.yaml` usa rutas absolutas de este proyecto; ajustar si se mueve a otra carpeta.
+The port may change when reconnecting. `upload.sh` rebuilds and flashes only after a successful build. The build configuration uses USB CDC, 16 MB flash, and the `app3M_fat9M_16MB` partition scheme.
 
-En esta Mac Apple Silicon fue necesario compilar el auxiliar `ctags` de Arduino de forma nativa: el distribuido por Arduino era Intel y no había Rosetta. Si se reinstalan las herramientas y aparece `bad CPU type in executable`, ejecutar `sh tools/native_ctags.sh`. El script usa la misma versión oficial 5.8-arduino11, verifica su SHA-256 y adapta un identificador antiguo que colisiona con el SDK actual de macOS.
+On the Apple Silicon Mac used for development, Arduino's `ctags` helper had to be compiled natively because the supplied binary was Intel-only and Rosetta was unavailable. If reinstalling the tools causes a `bad CPU type in executable` error, run `sh tools/native_ctags.sh`. The script uses the same official 5.8-arduino11 release, verifies its SHA-256, and adapts a legacy identifier that conflicts with the current macOS SDK.
 
-## Verificación y diagnóstico
+## Project structure
 
-El renderizador de `Widget.h` es compartido por firmware y vista previa de escritorio. Renderiza en franjas de 20 filas (hasta 11.36 KB cada una), con otra franja para rotación por software. El controlador permanece en su modo nativo para evitar desplazamientos de imagen por la RAM sobrante del ST7789. La red corre en una tarea independiente; solo la tarea principal accede a I2C y a la pantalla.
+| Path | Contents |
+| --- | --- |
+| `UsdMxnMonitor/UsdMxnMonitor.ino` | Hardware initialization, networking, controls, and main loop |
+| `UsdMxnMonitor/Widget.h` | Interface and responsive layout |
+| `UsdMxnMonitor/DisplayRotation.h` | Rotation of image strips |
+| `UsdMxnMonitor/Model.h` | Data, timers, and button, shake, and orientation detection |
+| `UsdMxnMonitor/QuoteParser.h` | Yahoo response validation and parsing |
+| `tools/` | Build, flash, configuration, capture, and preview utilities |
+| `tests/` | Logic and rotation tests, plus a sample response |
+| `reference/waveshare/` | Manufacturer examples used as references |
+| `assets/fonts/` | Inter font and its OFL license |
+| `docs/images/` | Screenshots used in this README |
+| [VALIDATION.md](VALIDATION.md) | Test results and on-device verification log (in Spanish) |
+
+## Tests and previews
+
+After installing dependencies:
 
 ```sh
-c++ -std=c++17 -IUsdMxnMonitor -I.arduino/user/libraries/ArduinoJson/src tests/test_monitor.cpp -o build/test_monitor
-build/test_monitor /ruta/a/respuesta-yahoo.json
-c++ -std=c++17 -IUsdMxnMonitor -I.arduino/user/libraries/ArduinoJson/src tools/preview.cpp -o build/preview
-build/preview /ruta/a/respuesta-yahoo.json build/preview.ppm
+sh tests/run.sh
 ```
 
-Las pruebas cubren respuestas incompletas, moneda equivocada, cotización nula, fechas futuras, historial no ordenado, temporizadores, controles y rechazo de golpes aislados. `tests/test_rotation.cpp` verifica la estabilidad de orientación, el rechazo de movimiento/posiciones ambiguas y la colocación de todos los píxeles en las cuatro rotaciones. Ejecutar todo con `sh tests/run.sh`. La vista previa permite `busy`, `offline`, `empty`, `charging`, `plugged-full` o `unplugged-full`; añadir `--landscape` para la disposición horizontal.
+Tests cover invalid or incomplete responses, timestamps, historical data, timers, controls, shakes, and stable orientation detection. They also check every pixel's position in all four rotations. The script generates PPM previews in `build/` using the same renderer as the firmware.
 
-Por USB a 115200 baudios: `d` imprime diagnóstico sin credenciales, `a` muestra aceleración y orientación, `r` solicita actualizar, `m` alterna el modo de pantalla y `s` entrega una captura RGB565 de la interfaz con sus dimensiones actuales. `tools/serial.py --capture` guarda también un JSON con anchura y altura. Las acciones físicas de toque, sacudida, PWR y los giros se registran en serial para verificarlas en el equipo real.
+To generate another preview after running the tests:
+
+```sh
+build/preview tests/fixtures/yahoo_5d.json build/portrait.ppm preview
+build/preview tests/fixtures/yahoo_5d.json build/landscape.ppm preview --landscape
+```
+
+The `busy`, `offline`, `empty`, `charging`, `plugged-full`, and `unplugged-full` states are also supported.
+
+Rendering uses strips of 20 rows, up to 11.36 KB each, plus another strip for software rotation. The ST7789 stays in its native addressing mode to avoid image offsets caused by RAM outside the visible area. Networking runs in a separate task; only the main task accesses I²C and the display.
+
+## USB diagnostics and screenshots
+
+Serial communication runs at **115200 baud**:
+
+| Command | Action |
+| --- | --- |
+| `d` | Hardware, power, mode, Wi-Fi, and memory diagnostics, without credentials |
+| `a` | Current acceleration and orientation |
+| `r` | Request a refresh |
+| `m` | Change display mode |
+| `s` | Capture the logical interface image in RGB565 |
+
+```sh
+python3 tools/serial.py /dev/cu.usbmodem101 --seconds 15 --send d
+python3 tools/serial.py /dev/cu.usbmodem101 --seconds 10 --capture build/screen.rgb565
+```
+
+A capture produces `screen.rgb565` and `screen.json`, using RGB565LE and the current orientation's dimensions. To view it, convert the raw pixels into an image format such as PNG. Do not open two serial monitors on the same port simultaneously.
+
+## Releases
+
+- **`v0.2.0`**: responsive layout and automatic rotation in four orientations, calibrated and verified on the board.
+- **`v0.1.0`**: first tagged release, including quotes, chart, controls, brightness modes, and an animated charging bar that hides when the battery is full and USB is connected.
+
+Historical `v1.x` serial messages identify development iterations; published project versions use the Git tags listed above.
+
+The Inter font includes its [SIL Open Font License](assets/fonts/OFL.txt).

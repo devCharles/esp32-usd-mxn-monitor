@@ -1,0 +1,7 @@
+.arduino/
+build/
+wifi.local.json
+UsdMxnMonitor/secrets.h
+UsdMxnMonitor/BuildTime.h
+__pycache__/
+.DS_Store

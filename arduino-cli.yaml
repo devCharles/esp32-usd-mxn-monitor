@@ -1,0 +1,9 @@
+board_manager:
+  additional_urls:
+    - https://espressif.github.io/arduino-esp32/package_esp32_index.json
+directories:
+  data: /Users/charles/code/esp32-device/.arduino/data
+  downloads: /Users/charles/code/esp32-device/.arduino/downloads
+  user: /Users/charles/code/esp32-device/.arduino/user
+build_cache:
+  path: /Users/charles/code/esp32-device/build/cache

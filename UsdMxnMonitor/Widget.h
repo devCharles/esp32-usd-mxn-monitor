@@ -6,18 +6,22 @@
 #include "Fonts.h"
 
 constexpr int WIDTH=240, HEIGHT=284, STRIP_HEIGHT=20;
+constexpr int MAX_WIDTH=284;
+inline int viewportWidth(uint8_t rotation){return rotation&1?HEIGHT:WIDTH;}
+inline int viewportHeight(uint8_t rotation){return rotation&1?WIDTH:HEIGHT;}
 struct Color { uint8_t r,g,b; };
 constexpr Color WHITE{235,235,240}, GRAY{139,139,148}, GREEN{48,209,88}, RED{255,83,94}, BLUE{74,172,255};
 inline uint16_t rgb565(Color c) { return ((c.r&248)<<8)|((c.g&252)<<3)|(c.b>>3); }
 
 // The same bounded renderer runs on the device and in the desktop preview.
-// A strip consumes 9.6 KB, leaving RAM for verified TLS and Wi-Fi.
+// Each strip consumes at most 11.36 KB, leaving RAM for verified TLS and Wi-Fi.
 struct Canvas {
   uint16_t *buffer;
   int top, height;
+  int width=WIDTH,screenHeight=HEIGHT;
   void pixel(int x,int y,Color c,uint8_t alpha=255) {
-    if (x<0 || x>=WIDTH || y<top || y>=top+height || !alpha) return;
-    auto &d=buffer[(y-top)*WIDTH+x];
+    if (x<0 || x>=width || y<top || y>=top+height || !alpha) return;
+    auto &d=buffer[(y-top)*width+x];
     if (alpha<255) {
       int r=((d>>11)&31)*255/31, g=((d>>5)&63)*255/63, b=(d&31)*255/31;
       c={uint8_t((c.r*alpha+r*(255-alpha))/255),uint8_t((c.g*alpha+g*(255-alpha))/255),uint8_t((c.b*alpha+b*(255-alpha))/255)};
@@ -59,6 +63,7 @@ struct View {
   int battery=-1;
   unsigned frame=0;
   uint32_t chargeAnimationMs=0;
+  uint8_t rotation=0;
   char status[48]="Conectando Wi-Fi...";
   char quoteTime[24]="";
 };
@@ -70,11 +75,11 @@ inline bool batteryBarVisible(const View &s) {
 inline void drawBatteryBar(Canvas &c,const View &s) {
   if(!batteryBarVisible(s))return;
   // Gray track distinguishes an empty/unknown battery from the dark background.
-  c.rect(0,5,WIDTH,3,{46,46,50});
+  c.rect(0,5,c.width,3,{46,46,50});
   if(s.battery>=0) {
     Color battery=s.charging?BLUE:(s.battery<=20?RED:GREEN);
     int level=s.battery>100?100:s.battery;
-    int filled=WIDTH*level/100;
+    int filled=c.width*level/100;
     c.rect(0,5,filled,3,battery);
     if(s.charging) {
       // Clip the traveling highlight to the actual charge level.
@@ -89,35 +94,39 @@ inline void drawBatteryBar(Canvas &c,const View &s) {
       }
     }
   } else {
-    for(int x=0;x<WIDTH;x+=8)c.rect(x,5,4,3,GRAY);
+    for(int x=0;x<c.width;x+=8)c.rect(x,5,4,3,GRAY);
   }
 }
 
 inline void drawWidget(Canvas &c,const View &s) {
+  bool landscape=c.width>c.screenHeight;
+  int right=c.width-20,headerShift=landscape?6:0;
+  int periodY=landscape?82:93;
+  int priceY=c.screenHeight-(landscape?35:37),footerY=c.screenHeight-17;
   for(int y=c.top;y<c.top+c.height;++y) {
-    const int v=24-(y*21/HEIGHT);
+    const int v=24-(y*21/c.screenHeight);
     // Ordered dithering prevents visible bands in the RGB565 dark gradient.
     static const uint8_t dither[4][4]={{0,4,1,5},{6,2,7,3},{1,5,0,4},{7,3,6,2}};
-    for(int x=0;x<WIDTH;++x){int d=dither[y%4][x%4];c.pixel(x,y,{uint8_t(v+d),uint8_t(v+d/2),uint8_t(v+1+d)});}
+    for(int x=0;x<c.width;++x){int d=dither[y%4][x%4];c.pixel(x,y,{uint8_t(v+d),uint8_t(v+d/2),uint8_t(v+1+d)});}
   }
   drawBatteryBar(c,s);
   Color accent=s.hasQuote?(change(s.quote)>=0?GREEN:RED):GRAY;
   // Filled triangle, mirroring the reference widget's direction marker.
   for(int y=0;y<11;++y) {
     int w=s.hasQuote && change(s.quote)<0?11-y:y+1;
-    c.rect(20+(11-w)/2,31+y,w,1,accent);
+    c.rect(20+(11-w)/2,31+y-headerShift,w,1,accent);
   }
-  c.text("MXN=X",37,44,fontTitle,WHITE);
-  c.text("USD/MXN",20,66,fontLabel,GRAY);
+  c.text("MXN=X",37,44-headerShift,fontTitle,WHITE);
+  c.text("USD/MXN",20,66-headerShift,fontLabel,GRAY);
   char buf[48];
   if(s.hasQuote) {
-    snprintf(buf,sizeof(buf),"%+.2f",change(s.quote));c.right(buf,220,43,fontLabel,accent);
-    snprintf(buf,sizeof(buf),"%+.2f%%",changePercent(s.quote));c.right(buf,220,65,fontLabel,accent);
+    snprintf(buf,sizeof(buf),"%+.2f",change(s.quote));c.right(buf,right,43-headerShift,fontLabel,accent);
+    snprintf(buf,sizeof(buf),"%+.2f%%",changePercent(s.quote));c.right(buf,right,65-headerShift,fontLabel,accent);
   }
-  c.text("5 DIAS",20,93,fontSmall,GRAY);
-  c.right(s.quoteTime,220,93,fontSmall,GRAY);
+  c.text("5 DIAS",20,periodY,fontSmall,GRAY);
+  c.right(s.quoteTime,right,periodY,fontSmall,GRAY);
 
-  constexpr int left=20,right=220,top=111,bottom=181;
+  int left=20,top=landscape?97:111,bottom=landscape?144:181;
   if(s.hasQuote) {
     const Quote &q=s.quote;
     float lo=q.price,hi=q.price;
@@ -138,17 +147,17 @@ inline void drawWidget(Canvas &c,const View &s) {
       c.line(x0,y0,x1,y1,accent);c.line(x0,y0+1,x1,y1+1,accent,175);
     }
     snprintf(buf,sizeof(buf),"%.2f",q.price);
-    if(c.textWidth(buf,fontPrice)<=204)c.right(buf,222,247,fontPrice,WHITE);
-    else c.right(buf,220,239,fontTitle,WHITE);
+    if(c.textWidth(buf,fontPrice)<=c.width-36)c.right(buf,right+2,priceY,fontPrice,WHITE);
+    else c.right(buf,right,priceY-8,fontTitle,WHITE);
   } else {
-    for(int x=left;x<right;x+=8)c.rect(x,148,4,1,GRAY,100);
-    c.right("--.--",222,247,fontPrice,GRAY);
+    for(int x=left;x<right;x+=8)c.rect(x,(top+bottom)/2,4,1,GRAY,100);
+    c.right("--.--",right+2,priceY,fontPrice,GRAY);
   }
   Color statusColor=s.stale?Color{255,178,76}:GRAY;
   if(s.busy) {
     int phase=s.frame%12;
-    for(int i=0;i<8;++i)c.rect(20+i*3,261,2,2,BLUE,uint8_t(30+((i+phase)%8)*28));
-    c.text("Actualizando...",50,267,fontSmall,BLUE);
-  } else c.text(s.status,20,267,fontSmall,statusColor);
-  c.right(screenModeLabel(s.mode),220,267,fontSmall,GRAY);
+    for(int i=0;i<8;++i)c.rect(20+i*3,footerY-6,2,2,BLUE,uint8_t(30+((i+phase)%8)*28));
+    c.text("Actualizando...",50,footerY,fontSmall,BLUE);
+  } else c.text(s.status,20,footerY,fontSmall,statusColor);
+  c.right(screenModeLabel(s.mode),right,footerY,fontSmall,GRAY);
 }

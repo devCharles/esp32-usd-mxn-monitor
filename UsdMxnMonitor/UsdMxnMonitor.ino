@@ -12,6 +12,7 @@
 #include <Preferences.h>
 #include <time.h>
 #include "Widget.h"
+#include "DisplayRotation.h"
 #include "QuoteParser.h"
 #include "RootCA.h"
 #include "BuildTime.h"
@@ -32,10 +33,12 @@ TouchDrvCSTXXX touch;
 Preferences prefs;
 View view;
 ShakeDetector shake;
+OrientationDetector orientation;
+float accelX=0,accelY=0,accelZ=0;
 PowerButton powerButton;
 bool pmuOK=false, imuOK=false, touchOK=false, dirty=true;
 bool rtcOK=false;
-uint16_t strip[WIDTH*STRIP_HEIGHT];
+uint16_t strip[MAX_WIDTH*STRIP_HEIGHT],rotatedStrip[MAX_WIDTH*STRIP_HEIGHT];
 uint32_t lastActivity=0,lastRequest=0,lastResult=0,lastBattery=0,lastPmu=0,lastSensor=0,lastDraw=0;
 uint32_t lastTouch=0,noticeUntil=0,retryDelay=REFRESH_MS,blockedUntil=0;
 uint32_t chargeStarted=0,lastChargeDraw=0;
@@ -287,29 +290,35 @@ void initHardware() {
   Serial.printf("HARDWARE pmu=%d touch=%d imu=%d battery=%d charging=%d voltage=%u\n",pmuOK,touchOK,imuOK,view.battery,view.charging,pmuOK?power.getBattVoltage():0);
 }
 
+void sendStrip(int top,int rows) {
+  DisplayRegion region=rotateStrip(strip,rotatedStrip,top,rows,view.rotation);
+  display.draw16bitRGBBitmap(region.x,region.y,view.rotation?rotatedStrip:strip,region.width,region.height);
+}
+
 void drawScreen(bool screenshot=false) {
   // Freeze the frame across all strips so the spinner never tears.
-  if(screenshot)Serial.println("FRAME RGB565 240 284");
-  for(int top=0;top<HEIGHT;top+=STRIP_HEIGHT) {
-    int h=HEIGHT-top<STRIP_HEIGHT?HEIGHT-top:STRIP_HEIGHT;
-    Canvas c{strip,top,h};drawWidget(c,view);
-    if(screenshot)Serial.write(reinterpret_cast<uint8_t*>(strip),WIDTH*h*2);
-    else display.draw16bitRGBBitmap(0,top,strip,WIDTH,h);
+  const int width=viewportWidth(view.rotation),height=viewportHeight(view.rotation);
+  if(screenshot)Serial.printf("FRAME RGB565 %d %d\r\n",width,height);
+  for(int top=0;top<height;top+=STRIP_HEIGHT) {
+    int h=height-top<STRIP_HEIGHT?height-top:STRIP_HEIGHT;
+    Canvas c{strip,top,h,width,height};drawWidget(c,view);
+    if(screenshot)Serial.write(reinterpret_cast<uint8_t*>(strip),width*h*2);
+    else sendStrip(top,h);
     yield();
   }
   if(screenshot)Serial.println("\nFRAME END");
 }
 
 void drawChargingBar() {
-  // Animate just 720 pixels without redrawing the quote or changing backlight.
-  Canvas c{strip,5,3};drawBatteryBar(c,view);
-  display.draw16bitRGBBitmap(0,5,strip,WIDTH,3);
+  // Animate only the logical top bar, in any orientation.
+  Canvas c{strip,5,3,viewportWidth(view.rotation),viewportHeight(view.rotation)};drawBatteryBar(c,view);
+  sendStrip(5,3);
 }
 
 void setup() {
   Serial.begin(115200);
   delay(400);
-  Serial.println("USD/MXN Monitor v1.4");
+  Serial.println("USD/MXN Monitor v1.5");
   setenv("TZ","CST6",1);tzset(); // Mexico City, UTC-6 year-round.
   prefs.begin("usd-mxn",false);
   // Migrate the saved ON/AUTO preference from v1.1 without losing the user's mode.
@@ -365,7 +374,14 @@ void loop() {
   if(imuOK && uint32_t(now-lastSensor)>=10) {
     lastSensor=now;
     float x,y,z;
-    if(imu.getDataReady() && imu.getAccelerometer(x,y,z) && shake.update(sqrtf(x*x+y*y+z*z),now))requestRefresh(true,"shake");
+    if(imu.getDataReady() && imu.getAccelerometer(x,y,z)) {
+      accelX=x;accelY=y;accelZ=z;
+      if(shake.update(sqrtf(x*x+y*y+z*z),now))requestRefresh(true,"shake");
+      if(orientation.updateBoard(x,y,z,now)) {
+        view.rotation=orientation.rotation;dirty=true;
+        Serial.printf("ORIENTATION degrees=%u size=%dx%d accel=%.2f,%.2f,%.2f\n",view.rotation*90,viewportWidth(view.rotation),viewportHeight(view.rotation),x,y,z);
+      }
+    }
   }
   if(uint32_t(now-lastBattery)>=1000){lastBattery=now;readBattery();}
   if(!view.busy && (!requestedBefore || (receivedBefore && uint32_t(millis()-lastResult)>=retryDelay)))requestRefresh(false,"timer");
@@ -384,6 +400,7 @@ void loop() {
     if(c=='r')requestRefresh(true,"serial");
     else if(c=='m')toggleMode();
     else if(c=='s')drawScreen(true);
+    else if(c=='a')Serial.printf("ACCEL %.3f %.3f %.3f rotation=%u\n",accelX,accelY,accelZ,view.rotation*90);
     else if(c=='d')Serial.printf("DIAG battery=%d charging=%d usb=%d bar=%d pmu=%d touch=%d imu=%d mode=%s brightness=%u wifi=%d heap=%u\n",view.battery,view.charging,view.usbConnected,batteryBarVisible(view),pmuOK,touchOK,imuOK,screenModeLabel(view.mode),brightness,WiFi.status(),ESP.getFreeHeap());
   }
   delay(5);

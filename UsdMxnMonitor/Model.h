@@ -77,6 +77,37 @@ inline uint8_t displayBrightness(ScreenMode mode, uint32_t idleMs) {
   return idleMs < OFF_MS ? 22 : 0;
 }
 
+// Input axes are normalized for the display (+Y upright, +X clockwise image).
+// Require a stable, mostly upright
+// gravity vector; lying flat, diagonal poses and shaking retain the last view.
+struct OrientationDetector {
+  uint8_t rotation=0,candidate=0;
+  uint32_t candidateSince=0,lastSample=0;
+  float filteredX=0,filteredY=0;
+  bool initialized=false,pending=false;
+  // Verified on this Waveshare board: upright => raw +X; clockwise 90° => raw -Y.
+  bool updateBoard(float x,float y,float z,uint32_t now) {return update(y,x,z,now);}
+  bool update(float x,float y,float z,uint32_t now) {
+    float norm=x*x+y*y+z*z;
+    if(!isfinite(norm) || norm<0.64f || norm>1.44f) {
+      pending=false;initialized=false;return false;
+    }
+    if(!initialized || uint32_t(now-lastSample)>150) {
+      filteredX=x;filteredY=y;initialized=true;pending=false;
+    } else {filteredX+=0.12f*(x-filteredX);filteredY+=0.12f*(y-filteredY);}
+    lastSample=now;
+    float ax=fabsf(filteredX),ay=fabsf(filteredY);
+    if(fmaxf(ax,ay)<0.65f || fabsf(z)>0.75f || fmaxf(ax,ay)<1.35f*fminf(ax,ay)) {
+      pending=false;return false;
+    }
+    uint8_t proposed=ay>ax?(filteredY>0?0:2):(filteredX>0?1:3);
+    if(proposed==rotation){pending=false;return false;}
+    if(!pending || candidate!=proposed){candidate=proposed;candidateSince=now;pending=true;return false;}
+    if(uint32_t(now-candidateSince)<700)return false;
+    rotation=candidate;pending=false;return true;
+  }
+};
+
 // Require two strong peaks separated by a release, not just a single desk bump.
 struct ShakeDetector {
   uint32_t firstPeak = 0, lastTrigger = 0;

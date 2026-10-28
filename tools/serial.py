@@ -6,6 +6,8 @@ from pathlib import Path
 import select
 import termios
 import time
+import re
+import json
 
 parser=argparse.ArgumentParser()
 parser.add_argument('port')
@@ -24,18 +26,21 @@ try:
     os.write(fd,(('s' if args.capture else args.send)).encode())
     deadline=time.monotonic()+args.seconds
     pending=b''
-    header=b'FRAME RGB565 240 284\r\n'
     while time.monotonic()<deadline:
         if not select.select([fd],[],[],min(.25,max(0,deadline-time.monotonic())))[0]:continue
         chunk=os.read(fd,65536)
         if not chunk:continue
         if args.capture:
             pending+=chunk
-            start=pending.find(header)
-            if start>=0 and len(pending)>=start+len(header)+240*284*2:
-                data=pending[start+len(header):start+len(header)+240*284*2]
+            match=re.search(rb'FRAME RGB565 (\d+) (\d+)\r?\n',pending)
+            if match:
+                width,height=map(int,match.groups())
+                if (width,height) not in [(240,284),(284,240)]:raise SystemExit('Dimensiones inesperadas.')
+            if match and len(pending)>=match.end()+width*height*2:
+                data=pending[match.end():match.end()+width*height*2]
                 args.capture.parent.mkdir(parents=True,exist_ok=True)
                 args.capture.write_bytes(data)
+                args.capture.with_suffix('.json').write_text(json.dumps({'width':width,'height':height,'format':'RGB565LE'}))
                 print('Captura RGB565 guardada:',args.capture)
                 break
         else:

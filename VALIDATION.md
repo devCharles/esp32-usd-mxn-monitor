@@ -2,6 +2,15 @@
 
 Fecha local: 27 de octubre de 2026. Placa conectada por `/dev/cu.usbmodem101`.
 
+## Orientación automática y diseño adaptable v1.5
+
+- Cuatro orientaciones, con diseño vertical de 240 × 284 y horizontal de 284 × 240. Gráfica, precio, encabezado y barra de batería usan las dimensiones de la orientación activa.
+- El acelerómetro requiere una posición estable durante 700 ms, además del filtrado. Se rechazan sacudidas, diagonales y posiciones planas; al acostar el dispositivo se conserva la orientación anterior. Girar no despierta la pantalla ni consulta datos.
+- Ejes calibrados en la placa con posiciones indicadas por el usuario: vertical original ≈ `(0.97, 0.20, -0.01)` g; giro horario de 90° ≈ `(0.04, -0.92, -0.17)` g. El segundo caso produce una rotación de imagen de 270°.
+- Pruebas de lógica y renderizado aprobadas: estabilidad, movimiento breve, posición plana, diagonal, sacudida, desbordamiento de temporizador, mapeo de ejes y todos los píxeles en las cuatro rotaciones, incluidos límites y última franja parcial.
+- Compilación correcta: 1,263,644 bytes de programa y 69,380 bytes de variables globales. Carga USB con hash verificado.
+- Comprobación real después de cargar: cotización HTTPS correcta, eventos de las cuatro orientaciones (0°, 90°, 180° y 270°) registrados en `build/orientation-verification.log` y captura horizontal de la placa revisada en `build/device-landscape.png`, sin recortes ni superposición de elementos. El usuario confirmó que se ve bien y funciona correctamente al probar las cuatro posiciones y dejarlo acostado.
+
 ## Ocultar batería llena con USB v1.4
 
 - La barra y su fondo gris se ocultan si el AXP2101 detecta USB conectado y reporta exactamente 100 %. La animación también se detiene en ese caso.
